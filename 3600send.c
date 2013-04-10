@@ -26,7 +26,8 @@
 
 static int DATA_SIZE = 1460;
 
-unsigned int sequence = 0;
+unsigned int sequenceSend = 0;
+unsigned int sequenceReceive = -1;
 
 void usage() {
     printf("Usage: 3600send host:port\n");
@@ -68,12 +69,12 @@ void *get_next_packet(int sequence, int *len) {
 
 int send_next_packet(int sock, struct sockaddr_in out) {
     int packet_len = 0;
-    void *packet = get_next_packet(sequence, &packet_len);
+    void *packet = get_next_packet(sequenceSend, &packet_len);
 
     if (packet == NULL) 
         return 0;
 
-    mylog("[send data] %d (%d)\n", sequence, packet_len - sizeof(header));
+    mylog("[send data] %d (%d)\n", sequenceSend, packet_len - sizeof(header));
 
     if (sendto(sock, packet, packet_len, 0, (struct sockaddr *) &out, (socklen_t) sizeof(out)) < 0) {
         perror("sendto");
@@ -84,7 +85,7 @@ int send_next_packet(int sock, struct sockaddr_in out) {
 }
 
 void send_final_packet(int sock, struct sockaddr_in out) {
-    header *myheader = make_header(sequence+1, 0, 1, 0);
+    header *myheader = make_header(sequenceSend+1, 0, 1, 0);
     mylog("[send eof]\n");
 
     if (sendto(sock, myheader, sizeof(header), 0, (struct sockaddr *) &out, (socklen_t) sizeof(out)) < 0) {
@@ -140,8 +141,8 @@ int main(int argc, char *argv[]) {
 
     while (send_next_packet(sock, out)) {
         int done = 0;
-
-        while (! done) {
+		int packetsSent = 1;
+        while ( done != packetsSent) {
             FD_ZERO(&socks);
             FD_SET(sock, &socks);
 
@@ -157,16 +158,18 @@ int main(int argc, char *argv[]) {
 
                 header *myheader = get_header(buf);
 
-                if ((myheader->magic == MAGIC) && (myheader->sequence >= sequence) && (myheader->ack == 1)) {
+                if ((myheader->magic == MAGIC) && ( myheader->sequence <= sequenceSend ) && (myheader->ack == 1)) {
                     mylog("[recv ack] %d\n", myheader->sequence);
-                    sequence = myheader->sequence;
-                    done = 1;
+                    sequenceReceive = myheader->sequence;
+                    done += 1;
                 } else {
-                    mylog("[recv corrupted ack] %x %d\n", MAGIC, sequence);
+                    mylog("[recv corrupted ack] %x %d\n", MAGIC, sequenceReceive);
                 }
             } else {
                 mylog("[error] timeout occurred\n");
             }
+
+			sequenceSend = sequenceReceive + 1;
         }
     }
 

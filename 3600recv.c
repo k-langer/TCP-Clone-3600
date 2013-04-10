@@ -97,7 +97,7 @@ int main() {
                 mylog("[recv data] %d (%d) %s\n", myheader->sequence, myheader->length, "ACCEPTED (in-order)");
                 mylog("[send ack] %d\n", myheader->sequence + myheader->length);
 
-                header *responseheader = make_header(myheader->sequence + myheader->length, 0, myheader->eof, 1);
+                header *responseheader = make_header(myheader->sequence, 0, myheader->eof, 1);
                 if (sendto(sock, responseheader, sizeof(header), 0, (struct sockaddr *) &in, (socklen_t) sizeof(in)) < 0) {
                     perror("sendto");
                     exit(1);
