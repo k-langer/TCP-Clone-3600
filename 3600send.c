@@ -22,7 +22,7 @@
 
 #include "3600sendrecv.h"
 
-#define WINDOW_SIZE 3
+#define WINDOW_SIZE 150
 
 static int DATA_SIZE = 1460;
 
@@ -66,7 +66,6 @@ void *get_next_packet(int sequence, int *len) {
 
     return packet;
 }
-
 int send_next_packet(int sock, struct sockaddr_in out) {
     int packet_len = 0;
     void *packet = get_next_packet(sequenceSend, &packet_len);
@@ -82,6 +81,18 @@ int send_next_packet(int sock, struct sockaddr_in out) {
     }
 
     return 1;
+}
+int send_next_window(int sock, struct sockaddr_in out, int* packetsSent) {
+    *packetsSent = 0;
+    for(int i = 0; i < WINDOW_SIZE; i++) {
+        if ( !send_next_packet(sock,out) ) {
+            break;
+        }
+        (*packetsSent)++;
+        sequenceSend++;        
+    }
+    sequenceSend--;    
+    return *packetsSent; 
 }
 
 void send_final_packet(int sock, struct sockaddr_in out) {
@@ -138,10 +149,10 @@ int main(int argc, char *argv[]) {
     struct timeval t;
     t.tv_sec = 30;
     t.tv_usec = 0;
+    int packetsSent = 0;
 
-    while (send_next_packet(sock, out)) {
+    while (send_next_window(sock, out, &packetsSent)) {
         int done = 0;
-		int packetsSent = 1;
         while ( done != packetsSent) {
             FD_ZERO(&socks);
             FD_SET(sock, &socks);
