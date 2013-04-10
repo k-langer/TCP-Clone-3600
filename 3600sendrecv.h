@@ -11,6 +11,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+#define WINDOW_SIZE 3
+
 typedef struct header_t {
   unsigned int magic:14;
   unsigned int ack:1;

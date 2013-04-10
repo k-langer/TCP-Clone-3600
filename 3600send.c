@@ -22,8 +22,6 @@
 
 #include "3600sendrecv.h"
 
-#define WINDOW_SIZE 150
-
 static int DATA_SIZE = 1460;
 
 unsigned int sequenceSend = 0;
