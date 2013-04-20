@@ -81,6 +81,16 @@ header *get_header(void *data) {
   return h;
 }
 
+int read_header_sequence( void* data ) {
+    header* h = (header*)data;
+    return ntohl(h->sequence);
+}
+
+int read_header_length( void* data) {
+    header* h = (header*)data;
+    return ntohs(h->length);
+}
+
 /**
  * This function takes a returned packet and returns a pointer to the data.  It
  * does not allocate any new memory, so no free is needed.

@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define WINDOW_SIZE 3
+#define WINDOW_SIZE 10 
 
 typedef struct header_t {
   unsigned int magic:14;
@@ -26,6 +26,8 @@ unsigned int MAGIC;
 void dump_packet(unsigned char *data, int size);
 header *make_header(int sequence, int length, int eof, int ack);
 header *get_header(void *data);
+int read_header_sequence(void* data);
+int read_header_length(void* data);
 char *get_data(void *data);
 char *timestamp();
 void mylog(char *fmt, ...);
