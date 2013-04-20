@@ -46,22 +46,22 @@ int get_next_data(char *data, int size) {
 void *get_next_packet(int sequence, int *len) {
     char *data = malloc(DATA_SIZE);
     int data_len = get_next_data(data, DATA_SIZE);
-
     if (data_len == 0) {
         free(data);
         return NULL;
     }
 
     header *myheader = make_header(sequence, data_len, 0, 0);
-    void *packet = malloc(sizeof(header) + data_len);
+    void *packet = malloc(sizeof(header) + data_len+sizeof(checksum_t));
     memcpy(packet, myheader, sizeof(header));
     memcpy(((char *) packet) +sizeof(header), data, data_len);
-
+    checksum_t chksm = checksum(data,data_len); 
+    memcpy(((char *) packet) +sizeof(header)+data_len, &chksm, sizeof(checksum_t)); 
     free(data);
     free(myheader);
 
-    *len = sizeof(header) + data_len;
-
+    *len = sizeof(header) + data_len + sizeof(checksum_t);
+    fprintf(stderr,"Checksum %d\n",get_checksum(packet,data_len+sizeof(header)));
     return packet;
 }
 int send_next_packet(int sock, struct sockaddr_in out) {

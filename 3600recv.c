@@ -90,8 +90,8 @@ int main() {
 
             header *myheader = get_header(buf);
             char *data = get_data(buf);
-
-            if (myheader->magic == MAGIC) {
+            fprintf(stderr,"Checksum %d\n",get_checksum(data,myheader->length));
+            if (myheader->magic == MAGIC && checksum(data,myheader->length) == get_checksum(data,myheader->length)) {
                 write(1, data, myheader->length);
 
                 mylog("[recv data] %d (%d) %s\n", myheader->sequence, myheader->length, "ACCEPTED (in-order)");

@@ -22,8 +22,6 @@ if (! (-e $RUN)) {
   die("Unable to find executable '$RUN'.");
 }
 
-print "Milestone tes\n";
-runTest("Large 0.1 Mb/s 500 ms latency", "--bandwidth 0.1 --latency 500", "--size large");
 
 print "Basic (friendly network) tests\n";
 runTest("Small 1 Mb/s, 10 ms latency", "", "--size small");

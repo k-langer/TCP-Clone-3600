@@ -12,6 +12,7 @@
 #include <stdarg.h>
 
 #define WINDOW_SIZE 3
+typedef int checksum_t; 
 
 typedef struct header_t {
   unsigned int magic:14;
@@ -27,8 +28,9 @@ void dump_packet(unsigned char *data, int size);
 header *make_header(int sequence, int length, int eof, int ack);
 header *get_header(void *data);
 char *get_data(void *data);
+checksum_t get_checksum(void *data,int dataLen);
 char *timestamp();
 void mylog(char *fmt, ...);
-
+checksum_t checksum(char* data,int len);
 #endif
 

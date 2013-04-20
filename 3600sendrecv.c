@@ -88,7 +88,14 @@ header *get_header(void *data) {
 char *get_data(void *data) {
   return (char *) data + sizeof(header);
 }
-
+/**
+this function returns the checksum from a data packet and the data length
+**/
+checksum_t get_checksum(void *data,int dataLen)
+{
+    checksum_t* tmp = (checksum_t*)((char*)data+dataLen); 
+    return *tmp;  
+}
 /**
  * This function will print a hex dump of the provided packet to the screen
  * to help facilitate debugging.  
@@ -143,4 +150,16 @@ void dump_packet(unsigned char *data, int size) {
         /* print rest of buffer if not empty */
         printf("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
     }
+}
+checksum_t checksum(char* data, int len)
+{
+    checksum_t chksm = 0; 
+    int i; 
+    for (i = len; i > 1; i -=2) {
+        chksm += (unsigned short) *((unsigned short*)data++);     
+    }
+    if ( i == 1) {
+        chksm+=*data;
+    } 
+    return chksm; 
 }
