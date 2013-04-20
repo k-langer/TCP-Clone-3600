@@ -38,7 +38,7 @@ int main() {
     */
 
     void* windowCache [ WINDOW_SIZE ];
-
+    unsigned int  windowTags[ WINDOW_SIZE ];
     for ( int x =0; x < WINDOW_SIZE; x++ ) {
         windowCache[ x ] = NULL;
     }
@@ -104,13 +104,16 @@ int main() {
                 if ( get_checksum(data,myheader->length) == checksum(data,myheader->length) ) {
 
                     windowCache[ myheader->sequence % WINDOW_SIZE ] = buf;
-
+                    windowTags[ myheader->sequence % WINDOW_SIZE] = myheader->sequence; 
                     int ackLength = 0;
 
                     if ( myheader->sequence == nextSequence ) {
                         write(1, data, myheader->length);
                         nextSequence++;
-                        void* nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
+                        void* nextPacket = 0; 
+                        if (windowTags[ nextSequence%WINDOW_SIZE ] == nextSequence) { 
+                            nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
+                        }
                         while ( nextPacket && read_header_sequence( nextPacket ) == (signed int)nextSequence ) {
                             write( 1, get_data( nextPacket ), read_header_length( nextPacket ) );
                             nextSequence++;
