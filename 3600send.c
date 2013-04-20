@@ -21,11 +21,14 @@
 #include <arpa/inet.h>
 
 #include "3600sendrecv.h"
+#define MAX_TIMEOUTS 5
 
 static int DATA_SIZE = 1460;
 
 unsigned int sequenceSend = 0;
 unsigned int sequenceReceive = -1;
+void* windowCache [ WINDOW_SIZE ];
+unsigned char firstWindow = 1;
 
 void usage() {
     printf("Usage: 3600send host:port\n");
@@ -44,6 +47,17 @@ int get_next_data(char *data, int size) {
  * if no more data is available.
  */
 void *get_next_packet(int sequence, int *len) {
+    if ( !firstWindow ) {
+        mylog( "[not first]\n" );
+        void* cachedPacket = windowCache[ sequence % WINDOW_SIZE ];
+        int cachedHeaderSequence = read_header_sequence( cachedPacket );
+        if ( cachedHeaderSequence == sequence ) {
+            mylog( "[from cache] %i\n", cachedHeaderSequence );
+            *len = sizeof( header ) + read_header_length( cachedPacket );
+            return cachedPacket;
+        }
+    }
+
     char *data = malloc(DATA_SIZE);
     int data_len = get_next_data(data, DATA_SIZE);
     if (data_len == 0) {
@@ -62,6 +76,9 @@ void *get_next_packet(int sequence, int *len) {
 
     *len = sizeof(header) + data_len + sizeof(checksum_t);
     fprintf(stderr,"Checksum %d\n",get_checksum(packet,data_len+sizeof(header)));
+
+    windowCache[ sequence % WINDOW_SIZE ] = packet;
+
     return packet;
 }
 int send_next_packet(int sock, struct sockaddr_in out) {
@@ -71,7 +88,7 @@ int send_next_packet(int sock, struct sockaddr_in out) {
     if (packet == NULL) 
         return 0;
 
-    mylog("[send data] %d (%d)\n", sequenceSend, packet_len - sizeof(header));
+    mylog("[send data] %d~%d (%d)\n", read_header_sequence( packet ), sequenceSend, packet_len - sizeof(header));
 
     if (sendto(sock, packet, packet_len, 0, (struct sockaddr *) &out, (socklen_t) sizeof(out)) < 0) {
         perror("sendto");
@@ -80,17 +97,22 @@ int send_next_packet(int sock, struct sockaddr_in out) {
 
     return 1;
 }
-int send_next_window(int sock, struct sockaddr_in out, int* packetsSent) {
+int send_next_window(int sock, struct sockaddr_in out, unsigned int* packetsSent) {
     *packetsSent = 0;
     for(int i = 0; i < WINDOW_SIZE; i++) {
         if ( !send_next_packet(sock,out) ) {
             break;
         }
         (*packetsSent)++;
-        sequenceSend++;        
+        sequenceSend++;
     }
-    sequenceSend--;    
-    return *packetsSent; 
+    sequenceSend--;
+
+    if ( firstWindow == 1 ) {
+        firstWindow = 0;
+    }
+
+    return *packetsSent;
 }
 
 void send_final_packet(int sock, struct sockaddr_in out) {
@@ -107,7 +129,7 @@ int main(int argc, char *argv[]) {
   /**
    * I've included some basic code for opening a UDP socket in C, 
    * binding to a empheral port, printing out the port number.
-   * 
+   *
    * I've also included a very simple transport protocol that simply
    * acknowledges every received packet.  It has a header, but does
    * not do any error handling (i.e., it does not have sequence 
@@ -127,7 +149,7 @@ int main(int argc, char *argv[]) {
     char *ip_s = strtok(tmp, ":");
     char *port_s = strtok(NULL, ":");
 
-    // first, open a UDP socket  
+    // first, open a UDP socket
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
     // next, construct the local port
@@ -145,18 +167,24 @@ int main(int argc, char *argv[]) {
 
     // construct the timeout
     struct timeval t;
-    t.tv_sec = 30;
+    t.tv_sec = 3;
     t.tv_usec = 0;
-    int packetsSent = 0;
 
-    while (send_next_window(sock, out, &packetsSent)) {
-        int done = 0;
-        while ( done != packetsSent) {
+    unsigned int packetsSent = 0;
+    unsigned int consecutiveTimeouts = 0;
+
+    while (send_next_window(sock, out, &packetsSent) && consecutiveTimeouts < MAX_TIMEOUTS) {
+        char timeout = 0;
+        unsigned int done = 0;
+        while ( !timeout && done < packetsSent ) {
+            t.tv_sec = 3;
             FD_ZERO(&socks);
             FD_SET(sock, &socks);
 
             // wait to receive, or for a timeout
             if (select(sock + 1, &socks, NULL, NULL, &t)) {
+                consecutiveTimeouts = 0;
+
                 unsigned char buf[10000];
                 int buf_len = sizeof(buf);
                 int received;
@@ -170,20 +198,49 @@ int main(int argc, char *argv[]) {
                 if ((myheader->magic == MAGIC) && ( myheader->sequence <= sequenceSend ) && (myheader->ack == 1)) {
                     mylog("[recv ack] %d\n", myheader->sequence);
                     sequenceReceive = myheader->sequence;
-                    done += 1;
+                    done++;
                 } else {
-                    mylog("[recv corrupted ack] %x %d\n", MAGIC, sequenceReceive);
+                    mylog("[recv corrupted ack] %x %d > %d - %d - %d\n", MAGIC, myheader->sequence, sequenceSend, myheader->ack, myheader->eof);
                 }
             } else {
                 mylog("[error] timeout occurred\n");
+                timeout = 1;
+                consecutiveTimeouts++;
+                sequenceSend = sequenceReceive + 1;
+                break;
             }
 
-			sequenceSend = sequenceReceive + 1;
+        }
+        sequenceSend = sequenceReceive + 1;
+
+    }
+    if ( consecutiveTimeouts == MAX_TIMEOUTS ) {
+        mylog( "[max timeouts hit]\n" );
+    } else {
+        consecutiveTimeouts = 0;
+        while ( consecutiveTimeouts < 2 * MAX_TIMEOUTS ) {
+            send_final_packet(sock, out);
+            t.tv_sec = 0;
+            t.tv_usec = 100000;
+            if (select(sock + 1, &socks, NULL, NULL, &t)) {
+                unsigned char buf[10000];
+                int buf_len = sizeof(buf);
+                int received;
+                if ((received = recvfrom(sock, &buf, buf_len, 0, (struct sockaddr *) &in, (socklen_t *) &in_len)) < 0) {
+                    perror("recvfrom");
+                    exit(1);
+                }
+
+                header* myheader = get_header(buf);
+                if ( ( myheader->magic == MAGIC ) &&  myheader->eof ) {
+                    break;
+                }
+            } else {
+                consecutiveTimeouts++;
+                mylog( "[timeout on eof]\n");
+            }
         }
     }
-
-    send_final_packet(sock, out);
-
     mylog("[completed]\n");
 
     return 0;

@@ -22,6 +22,8 @@
 
 #include "3600sendrecv.h"
 
+#define RECV_TIMEOUT 15
+
 int main() {
     /**
     * I've included some basic code for opening a UDP socket in C, 
@@ -34,6 +36,12 @@ int main() {
     * need to fill in many of the details, but this should be enough to
     * get you started.
     */
+
+    void* windowCache [ WINDOW_SIZE ];
+
+    for ( int x =0; x < WINDOW_SIZE; x++ ) {
+        windowCache[ x ] = NULL;
+    }
 
     // first, open a UDP socket  
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -67,12 +75,14 @@ int main() {
 
     // construct the timeout
     struct timeval t;
-    t.tv_sec = 30;
+    t.tv_sec = RECV_TIMEOUT;
     t.tv_usec = 0;
 
     // our receive buffer
     int buf_len = 1500;
     void* buf = malloc(buf_len);
+
+    unsigned int nextSequence = 0;
 
     // wait to receive, or for a timeout
     while (1) {
@@ -87,17 +97,31 @@ int main() {
             }
 
             //      dump_packet(buf, received);
-
+            t.tv_sec = RECV_TIMEOUT;
             header *myheader = get_header(buf);
             char *data = get_data(buf);
-            fprintf(stderr,"Checksum %d\n",get_checksum(data,myheader->length));
             if (myheader->magic == MAGIC && checksum(data,myheader->length) == get_checksum(data,myheader->length)) {
-                write(1, data, myheader->length);
+
+                windowCache[ myheader->sequence % WINDOW_SIZE ] = buf;
+
+                int ackLength = 0;
+
+                if ( myheader->sequence == nextSequence ) {
+                    write(1, data, myheader->length);
+                    nextSequence++;
+                    void* nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
+                    while ( nextPacket && read_header_sequence( nextPacket ) == (signed int)nextSequence ) {
+                        write( 1, get_data( nextPacket ), read_header_length( nextPacket ) );
+                        nextSequence++;
+                    }
+                    ackLength = myheader->length;
+                }
 
                 mylog("[recv data] %d (%d) %s\n", myheader->sequence, myheader->length, "ACCEPTED (in-order)");
-                mylog("[send ack] %d\n", myheader->sequence + myheader->length);
+                mylog("[send ack] %d\n", nextSequence - 1);
 
-                header *responseheader = make_header(myheader->sequence, 0, myheader->eof, 1);
+                header *responseheader = make_header( nextSequence - 1, 0, myheader->eof, 1 );
+
                 if (sendto(sock, responseheader, sizeof(header), 0, (struct sockaddr *) &in, (socklen_t) sizeof(in)) < 0) {
                     perror("sendto");
                     exit(1);
@@ -108,6 +132,7 @@ int main() {
                     mylog("[completed]\n");
                     exit(0);
                 }
+
             } else {
                 mylog("[recv corrupted packet]\n");
             }
