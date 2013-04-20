@@ -12,6 +12,7 @@
 #include <stdarg.h>
 
 typedef int checksum_t; 
+typedef char bool_t; 
 #define WINDOW_SIZE 10 
 
 typedef struct header_t {
@@ -34,5 +35,6 @@ checksum_t get_checksum(void *data,int dataLen);
 char *timestamp();
 void mylog(char *fmt, ...);
 checksum_t checksum(char* data,int len);
+bool_t check_checksum(char* data, int len);
 #endif
 

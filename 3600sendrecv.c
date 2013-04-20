@@ -173,3 +173,7 @@ checksum_t checksum(char* data, int len)
     } 
     return chksm; 
 }
+bool_t check_checksum(char* data, int len) 
+{
+    return (bool_t)(check_checksum(data,len) == checksum(data,len)); 
+}

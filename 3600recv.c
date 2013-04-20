@@ -100,7 +100,7 @@ int main() {
             t.tv_sec = RECV_TIMEOUT;
             header *myheader = get_header(buf);
             char *data = get_data(buf);
-            if (myheader->magic == MAGIC && checksum(data,myheader->length) == get_checksum(data,myheader->length)) {
+            if (myheader->magic == MAGIC && check_checksum(data,myheader->length) ) {
 
                 windowCache[ myheader->sequence % WINDOW_SIZE ] = buf;
 
