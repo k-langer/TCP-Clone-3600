@@ -52,7 +52,7 @@ void *get_next_packet(int sequence, int *len) {
         int cachedHeaderSequence = read_header_sequence( cachedPacket );
         if ( cachedHeaderSequence == sequence ) {
             mylog( "[from cache] %i\n", cachedHeaderSequence );
-            *len = sizeof( header ) + read_header_length( cachedPacket );
+            *len = sizeof( header ) + read_header_length( cachedPacket )+sizeof(checksum_t);
             return cachedPacket;
         }
     }
