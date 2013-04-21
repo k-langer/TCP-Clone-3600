@@ -95,16 +95,23 @@ int main() {
 
             //      dump_packet(buf, received);
             t.tv_sec = RECV_TIMEOUT;
-            header *myheader = get_header(buf);
+            int headerSequence = read_header_sequence( buf );
+            int headerMagic = read_header_magic( buf );
+            int headerLength = read_header_length( buf );
+            int headerEof = read_header_eof( buf );
             char *data = get_data(buf);
-            if (myheader->magic == MAGIC ) { 
+            if (headerMagic == MAGIC ) { 
 //               if ( get_checksum(data,myheader->length) == checksum(data,myheader->length) ) {
 
-                    windowCache[ myheader->sequence % WINDOW_SIZE ] = buf;
+                    if ( windowCache[ headerSequence % WINDOW_SIZE ] ) {
+                        free( windowCache [ headerSequence % WINDOW_SIZE ] );
+                    }
+                    windowCache[ headerSequence % WINDOW_SIZE ] = (void*)malloc( sizeof( header ) + read_header_length( buf ) );
+                    memcpy( windowCache[ headerSequence % WINDOW_SIZE ], buf, sizeof( header ) + read_header_length( buf ) );
                     int ackLength = 0;
 
-                    if ( myheader->sequence == nextSequence ) {
-                        write(1, data, myheader->length);
+                    if ( headerSequence == nextSequence ) {
+                        write(1, data, headerLength);
                         nextSequence++;
                         void* nextPacket = NULL;
                         nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
@@ -113,20 +120,20 @@ int main() {
                             nextSequence++;
                             nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
                         }
-                        ackLength = myheader->length;
+                        ackLength = headerLength;
                     }
 
-                    mylog("[recv data] %d (%d) %s\n", myheader->sequence, myheader->length, "ACCEPTED (in-order)");
+                    mylog("[recv data] %d (%d) %s\n", headerSequence, headerLength, "ACCEPTED (in-order)");
                     mylog("[send ack] %d\n", nextSequence - 1);
 
-                    header *responseheader = make_header( nextSequence - 1, 0, myheader->eof, 1 );
+                    header *responseheader = make_header( nextSequence - 1, 0, headerEof, 1 );
 
                     if (sendto(sock, responseheader, sizeof(header), 0, (struct sockaddr *) &in, (socklen_t) sizeof(in)) < 0) {
                         perror("sendto");
                         exit(1);
   //                  }
                }
-                if (myheader->eof) {
+                if (headerEof) {
                     mylog("[recv eof]\n");
                     mylog("[completed]\n");
                     exit(0);

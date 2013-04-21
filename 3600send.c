@@ -46,7 +46,7 @@ int get_next_data(char *data, int size) {
  * if no more data is available.
  */
 void *get_next_packet(int sequence, int *len) {
-    if ( !firstWindow ) {
+    if ( windowCache[ sequence % WINDOW_SIZE ] ) {
         void* cachedPacket = windowCache[ sequence % WINDOW_SIZE ];
         int cachedHeaderSequence = read_header_sequence( cachedPacket );
         if ( cachedHeaderSequence == sequence ) {
@@ -73,7 +73,7 @@ void *get_next_packet(int sequence, int *len) {
     free(myheader);
 
     *len = sizeof(header) + data_len + sizeof(checksum_t);
-    fprintf(stderr,"Checksum %d\n",get_checksum(packet,data_len+sizeof(header)));
+    mylog("Checksum %d\n",get_checksum(packet,data_len+sizeof(header)));
 
     windowCache[ sequence % WINDOW_SIZE ] = packet;
 
@@ -105,10 +105,6 @@ int send_next_window(int sock, struct sockaddr_in out, unsigned int* packetsSent
         sequenceSend++;
     }
     sequenceSend--;
-
-    if ( firstWindow == 1 ) {
-        firstWindow = 0;
-    }
 
     return *packetsSent;
 }
@@ -196,8 +192,12 @@ int main(int argc, char *argv[]) {
 
     // construct the timeout
     struct timeval t;
-    t.tv_sec = 0;
+    t.tv_sec = DEBUG_SEND_TIMEOUT;
     t.tv_usec = SEND_TIMEOUT;
+
+    for ( int x = 0; x++; x < WINDOW_SIZE ) {
+        windowCache[ x ] = NULL;
+    }
 
     unsigned int packetsSent = 0;
     unsigned int consecutiveTimeouts = 0;
@@ -207,6 +207,7 @@ int main(int argc, char *argv[]) {
         char timeout = 0;
         unsigned int done = 0;
         while ( !timeout && done < packetsSent ) {
+            t.tv_sec = DEBUG_SEND_TIMEOUT;
             t.tv_usec = SEND_TIMEOUT;
             FD_ZERO(&socks);
             FD_SET(sock, &socks);
@@ -233,8 +234,8 @@ int main(int argc, char *argv[]) {
                         repeatAcks = 0;
                     }
                     if ( repeatAcks == RETRANSMIT ) {
+                        sequenceSend = sequenceReceive + 1;
                         if ( !fast_retransmit( sock, out, socks, t, in, in_len ) ) {
-                            consecutiveTimeouts = MAX_TIMEOUTS;
                             break;
                         }
                     } else {
@@ -260,7 +261,7 @@ int main(int argc, char *argv[]) {
         mylog( "[max timeouts hit]\n" );
     } else {
         consecutiveTimeouts = 0;
-        while ( consecutiveTimeouts < 2 * MAX_TIMEOUTS ) {
+        while ( ( consecutiveTimeouts < (MAX_TIMEOUTS / 4) ) ) {
             send_final_packet(sock, out);
             t.tv_sec = 0;
             t.tv_usec = 100000;
@@ -268,7 +269,7 @@ int main(int argc, char *argv[]) {
                 unsigned char buf[10000];
                 int buf_len = sizeof(buf);
                 int received;
-                if ((received = recvfrom(sock, &buf, buf_len, 0, (struct sockaddr *) &in, (socklen_t *) &in_len)) < 0) {
+                if ((received = recvfrom(sock, &buf, buf_len, 0, (struct sockaddr *) &in, (socklen_t *) &in_len)) < 0) {    
                     perror("recvfrom");
                     exit(1);
                 }
@@ -283,7 +284,8 @@ int main(int argc, char *argv[]) {
             }
         }
     }
-    mylog("[completed]\n");
+
+     mylog("[completed]\n");
 
     return 0;
 }
