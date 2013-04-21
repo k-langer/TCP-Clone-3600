@@ -86,9 +86,19 @@ int read_header_sequence( void* data ) {
     return ntohl(h->sequence);
 }
 
-int read_header_length( void* data) {
+int read_header_length( void* data ) {
     header* h = (header*)data;
     return ntohs(h->length);
+}
+
+int read_header_eof( void* data ) {
+    header* h = (header*)data;
+    return h->eof;
+}
+
+int read_header_magic( void* data ) {
+    header* h = (header*)data;
+    return h->magic;
 }
 
 /**

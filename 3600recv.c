@@ -21,7 +21,6 @@
 
 #include "3600sendrecv.h"
 
-
 int main() {
     /**
     * I've included some basic code for opening a UDP socket in C, 
@@ -35,9 +34,12 @@ int main() {
     * get you started.
     */
 
-    
+    void* windowCache [ WINDOW_SIZE ];
+    for ( int x =0; x < WINDOW_SIZE; x++ ) {
+        windowCache[ x ] = NULL;
+    }
 
-    // first, open a UDP socket  
+    // first, open a UDP socket
     int sock = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
 
     // next, construct the local port
@@ -74,15 +76,11 @@ int main() {
 
     // our receive buffer
     int buf_len = 1500;
-    void* buffer = malloc(buf_len);
-    void * buf; 
+    void* buf = malloc(buf_len);
     unsigned int nextSequence = 0;
-   
+
     // wait to receive, or for a timeout
-    void**windowCache = calloc(sizeof(void*), WINDOW_SIZE); 
-    int count = 0; 
     while (1) {
-        buf = buffer; 
         FD_ZERO(&socks);
         FD_SET(sock, &socks);
         if (select(sock + 1, &socks, NULL, NULL, &t)) {
@@ -91,51 +89,58 @@ int main() {
                 perror("recvfrom");
                 exit(1);
             }
-            count++; 
             //      dump_packet(buf, received);
             t.tv_sec = RECV_TIMEOUT;
-            header *myheader = get_header(buf);
+            int headerSequence = read_header_sequence( buf );
+            int headerMagic = read_header_magic( buf );
+            int headerLength = read_header_length( buf );
+            int headerEof = read_header_eof( buf );
             char *data = get_data(buf);
-            fprintf(stderr,"checksum %d\n",checksum(data,myheader->length)); 
-            if (myheader->magic == MAGIC && get_checksum(data,myheader->length) == checksum(data,myheader->length) ) {
-                        windowCache[ myheader->sequence % WINDOW_SIZE ] = buf;
-                        fprintf(stderr,"Cached sequence # %d \n",myheader->sequence); 
-            }
-            while(1) {
-                buf = windowCache[ nextSequence% WINDOW_SIZE ]; 
-                if (buf) {
-                    myheader = get_header(buf);
-                    data = get_data(buf);            
-                    if (read_header_sequence( buf ) == (signed int)nextSequence) {                     
-                        write( 1, get_data( buf ), read_header_length( buf ) );
-                        mylog("[recv data] %d (%d) %s\n", myheader->sequence, myheader->length, "ACCEPTED (in-order)");
-                        nextSequence++;
-                    } else if (myheader->eof) {
-                        mylog("[recv eof]\n");
-                        mylog("[completed]\n");
-                        exit(0);                
-                    } else {
-                        break; 
+            if (headerMagic == MAGIC ) {
+//               if ( get_checksum(data,headerLength ) == checksum(data, headerLength ) ) {
+
+                    if ( windowCache[ headerSequence % WINDOW_SIZE ] ) {
+                        free( windowCache [ headerSequence % WINDOW_SIZE ] );
                     }
-                } else {
-                    break; 
+                    windowCache[ headerSequence % WINDOW_SIZE ] = (void*)malloc( sizeof( header ) + read_header_length( buf ) );
+                    memcpy( windowCache[ headerSequence % WINDOW_SIZE ], buf, sizeof( header ) + read_header_length( buf ) );
+                    int ackLength = 0;
+
+                    if ( headerSequence == nextSequence ) {
+                        write(1, data, headerLength);
+                        nextSequence++;
+                        void* nextPacket = NULL;
+                        nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
+                        while ( nextPacket && read_header_sequence( nextPacket ) == (signed int)nextSequence ) {
+                            write( 1, get_data( nextPacket ), read_header_length( nextPacket ) );
+                            nextSequence++;
+                            nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
+                        }
+                        ackLength = headerLength;
+                    }
+
+                    mylog("[recv data] %d (%d) %s\n", headerSequence, headerLength, "ACCEPTED (in-order)");
+                    mylog("[send ack] %d\n", nextSequence - 1);
+
+                    header *responseheader = make_header( nextSequence - 1, 0, headerEof, 1 );
+
+                    if (sendto(sock, responseheader, sizeof(header), 0, (struct sockaddr *) &in, (socklen_t) sizeof(in)) < 0) {
+                        perror("sendto");
+                        exit(1);
+                    }
+//                }
+
+                if (headerEof) {
+                    mylog("[recv eof]\n");
+                    mylog("[completed]\n");
+                    exit(0);
                 }
-            }  
-            if (count % WINDOW_SIZE == 0) {
-            mylog("[send ack] %d\n", nextSequence);
-            header *responseheader = make_header( nextSequence, 0, myheader->eof, 1 );
-            if (sendto(sock, responseheader, sizeof(header), 0, (struct sockaddr *) &in, (socklen_t) sizeof(in)) < 0) {
-                perror("sendto");
-                exit(1);
             }
-            count = 0; 
-            }
-               
         } else {
             mylog("[error] timeout occurred\n");
             exit(1);
         }
     }
-      
+
     return 0;
 }

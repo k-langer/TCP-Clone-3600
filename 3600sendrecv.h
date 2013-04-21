@@ -11,12 +11,14 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define WINDOW_SIZE 3
-#define SEND_TIMEOUT 800000 //microseconds
-#define RECV_TIMEOUT 150     //seconds
-#define MAX_TIMEOUTS 150
+#define WINDOW_SIZE 15
+#define SEND_TIMEOUT 80000 //microseconds
+#define DEBUG_SEND_TIMEOUT 0 //seconds
+#define RECV_TIMEOUT 15     //seconds
+#define MAX_TIMEOUTS 100
+#define RETRANSMIT 5
 
-typedef int checksum_t; 
+typedef int checksum_t;
 typedef char bool_t;
 
 typedef struct header_t {
@@ -34,6 +36,8 @@ header *make_header(int sequence, int length, int eof, int ack);
 header *get_header(void *data);
 int read_header_sequence(void* data);
 int read_header_length(void* data);
+int read_header_eof(void* data);
+int read_header_magic(void* data);
 char *get_data(void *data);
 checksum_t get_checksum(void *data,int dataLen);
 char *timestamp();
