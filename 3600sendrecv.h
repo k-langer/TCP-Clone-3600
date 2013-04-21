@@ -11,7 +11,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define WINDOW_SIZE 10 
+#define WINDOW_SIZE 30
+#define SEND_TIMEOUT 80000 //microseconds
+#define RECV_TIMEOUT 15     //seconds
+#define MAX_TIMEOUTS 15
 
 typedef struct header_t {
   unsigned int magic:14;

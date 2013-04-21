@@ -21,7 +21,6 @@
 #include <arpa/inet.h>
 
 #include "3600sendrecv.h"
-#define MAX_TIMEOUTS 5
 
 static int DATA_SIZE = 1460;
 
@@ -166,8 +165,8 @@ int main(int argc, char *argv[]) {
 
     // construct the timeout
     struct timeval t;
-    t.tv_sec = 3;
-    t.tv_usec = 0;
+    t.tv_sec = 0;
+    t.tv_usec = SEND_TIMEOUT;
 
     unsigned int packetsSent = 0;
     unsigned int consecutiveTimeouts = 0;
@@ -176,7 +175,7 @@ int main(int argc, char *argv[]) {
         char timeout = 0;
         unsigned int done = 0;
         while ( !timeout && done < packetsSent ) {
-            t.tv_sec = 3;
+            t.tv_usec = SEND_TIMEOUT;
             FD_ZERO(&socks);
             FD_SET(sock, &socks);
 
