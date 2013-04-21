@@ -18,7 +18,6 @@
 
 typedef int checksum_t; 
 typedef char bool_t;
-#define WINDOW_SIZE 10
 
 typedef struct header_t {
   unsigned int magic:14;
