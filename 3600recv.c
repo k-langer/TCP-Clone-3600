@@ -38,7 +38,7 @@ int main() {
     */
 
     void* windowCache [ WINDOW_SIZE ];
-
+    unsigned int  windowTags[ WINDOW_SIZE ];
     for ( int x =0; x < WINDOW_SIZE; x++ ) {
         windowCache[ x ] = NULL;
     }
@@ -100,40 +100,42 @@ int main() {
             t.tv_sec = RECV_TIMEOUT;
             header *myheader = get_header(buf);
             char *data = get_data(buf);
+            if (myheader->magic == MAGIC ) { 
+                if ( get_checksum(data,myheader->length) == checksum(data,myheader->length) ) {
 
-            if (myheader->magic == MAGIC) {
+                    windowCache[ myheader->sequence % WINDOW_SIZE ] = buf;
+                    windowTags[ myheader->sequence % WINDOW_SIZE] = myheader->sequence; 
+                    int ackLength = 0;
 
-                windowCache[ myheader->sequence % WINDOW_SIZE ] = buf;
-
-                int ackLength = 0;
-
-                if ( myheader->sequence == nextSequence ) {
-                    write(1, data, myheader->length);
-                    nextSequence++;
-                    void* nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
-                    while ( nextPacket && read_header_sequence( nextPacket ) == (signed int)nextSequence ) {
-                        write( 1, get_data( nextPacket ), read_header_length( nextPacket ) );
+                    if ( myheader->sequence == nextSequence ) {
+                        write(1, data, myheader->length);
                         nextSequence++;
+                        void* nextPacket = 0; 
+                        if (windowTags[ nextSequence%WINDOW_SIZE ] == nextSequence) { 
+                            nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
+                        }
+                        while ( nextPacket && read_header_sequence( nextPacket ) == (signed int)nextSequence ) {
+                            write( 1, get_data( nextPacket ), read_header_length( nextPacket ) );
+                            nextSequence++;
+                        }
+                        ackLength = myheader->length;
                     }
-                    ackLength = myheader->length;
+
+                    mylog("[recv data] %d (%d) %s\n", myheader->sequence, myheader->length, "ACCEPTED (in-order)");
+                    mylog("[send ack] %d\n", nextSequence - 1);
+
+                    header *responseheader = make_header( nextSequence - 1, 0, myheader->eof, 1 );
+
+                    if (sendto(sock, responseheader, sizeof(header), 0, (struct sockaddr *) &in, (socklen_t) sizeof(in)) < 0) {
+                        perror("sendto");
+                        exit(1);
+                    }
                 }
-
-                mylog("[recv data] %d (%d) %s\n", myheader->sequence, myheader->length, "ACCEPTED (in-order)");
-                mylog("[send ack] %d\n", nextSequence - 1);
-
-                header *responseheader = make_header( nextSequence - 1, 0, myheader->eof, 1 );
-
-                if (sendto(sock, responseheader, sizeof(header), 0, (struct sockaddr *) &in, (socklen_t) sizeof(in)) < 0) {
-                    perror("sendto");
-                    exit(1);
-                }
-
                 if (myheader->eof) {
                     mylog("[recv eof]\n");
                     mylog("[completed]\n");
                     exit(0);
                 }
-
             } else {
                 mylog("[recv corrupted packet]\n");
             }

@@ -16,6 +16,10 @@
 #define RECV_TIMEOUT 15     //seconds
 #define MAX_TIMEOUTS 15
 
+typedef int checksum_t; 
+typedef char bool_t;
+#define WINDOW_SIZE 10
+
 typedef struct header_t {
   unsigned int magic:14;
   unsigned int ack:1;
@@ -32,8 +36,10 @@ header *get_header(void *data);
 int read_header_sequence(void* data);
 int read_header_length(void* data);
 char *get_data(void *data);
+checksum_t get_checksum(void *data,int dataLen);
 char *timestamp();
 void mylog(char *fmt, ...);
-
+checksum_t checksum(char* data,int len);
+bool_t check_checksum(char* data, int len);
 #endif
 
