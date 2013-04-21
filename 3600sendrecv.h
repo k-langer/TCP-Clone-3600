@@ -11,12 +11,13 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define WINDOW_SIZE 30
-#define SEND_TIMEOUT 80000 //microseconds
+#define WINDOW_SIZE 15
+#define SEND_TIMEOUT 60000 //microseconds
 #define RECV_TIMEOUT 15     //seconds
-#define MAX_TIMEOUTS 15
+#define MAX_TIMEOUTS 35
+#define RETRANSMIT 3
 
-typedef int checksum_t; 
+typedef int checksum_t;
 typedef char bool_t;
 
 typedef struct header_t {

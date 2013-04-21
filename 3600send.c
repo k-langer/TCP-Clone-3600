@@ -47,7 +47,6 @@ int get_next_data(char *data, int size) {
  */
 void *get_next_packet(int sequence, int *len) {
     if ( !firstWindow ) {
-        mylog( "[not first]\n" );
         void* cachedPacket = windowCache[ sequence % WINDOW_SIZE ];
         int cachedHeaderSequence = read_header_sequence( cachedPacket );
         if ( cachedHeaderSequence == sequence ) {
@@ -124,14 +123,45 @@ void send_final_packet(int sock, struct sockaddr_in out) {
     }
 }
 
+int fast_retransmit(int sock, struct sockaddr_in out, fd_set socks, struct timeval t, struct sockaddr_in in, socklen_t in_len ) {
+    for ( int x = 0; x < 50; x++ ) {
+        send_next_packet( sock, out );
+
+        if ( select( sock + 1, &socks, NULL, NULL, &t) ) {
+
+            unsigned char buf[10000];
+            int buf_len = sizeof(buf);
+            int received;
+            if ((received = recvfrom(sock, &buf, buf_len, 0, (struct sockaddr *) &in, (socklen_t *) &in_len)) < 0) {
+                perror("recvfrom");
+                exit(1);
+            }
+
+            header *myheader = get_header(buf);
+
+            if ((myheader->magic == MAGIC) && (myheader->ack == 1)) {
+                mylog("[recv ack] %d\n", myheader->sequence);
+                sequenceReceive = myheader->sequence;
+            } else {
+                mylog("[recv corrupted ack] %x %d > %d - %d - %d\n", MAGIC, myheader->sequence, sequenceSend, myheader->ack, myheader->eof );
+            }
+        } else {
+            mylog("[error] timeout occurred\n");
+            sequenceSend = sequenceReceive + 1;
+            return 1;
+        }
+    }
+    return 0;
+}
+
 int main(int argc, char *argv[]) {
   /**
-   * I've included some basic code for opening a UDP socket in C, 
+   * I've included some basic code for opening a UDP socket in C,
    * binding to a empheral port, printing out the port number.
    *
    * I've also included a very simple transport protocol that simply
    * acknowledges every received packet.  It has a header, but does
-   * not do any error handling (i.e., it does not have sequence 
+   * not do any error handling (i.e., it does not have sequence
    * numbers, timeouts, retries, a "window"). You will
    * need to fill in many of the details, but this should be enough to
    * get you started.
@@ -171,6 +201,7 @@ int main(int argc, char *argv[]) {
 
     unsigned int packetsSent = 0;
     unsigned int consecutiveTimeouts = 0;
+    unsigned int repeatAcks = 0;
 
     while (send_next_window(sock, out, &packetsSent) && consecutiveTimeouts < MAX_TIMEOUTS) {
         char timeout = 0;
@@ -196,7 +227,19 @@ int main(int argc, char *argv[]) {
 
                 if ((myheader->magic == MAGIC) && ( myheader->sequence <= sequenceSend ) && (myheader->ack == 1)) {
                     mylog("[recv ack] %d\n", myheader->sequence);
-                    sequenceReceive = myheader->sequence;
+                    if ( sequenceReceive == myheader->sequence ) {
+                        repeatAcks++;
+                    } else {
+                        repeatAcks = 0;
+                    }
+                    if ( repeatAcks == RETRANSMIT ) {
+                        if ( !fast_retransmit( sock, out, socks, t, in, in_len ) ) {
+                            consecutiveTimeouts = MAX_TIMEOUTS;
+                            break;
+                        }
+                    } else {
+                        sequenceReceive = myheader->sequence;
+                    }
                     done++;
                 } else {
                     mylog("[recv corrupted ack] %x %d > %d - %d - %d\n", MAGIC, myheader->sequence, sequenceSend, myheader->ack, myheader->eof);
