@@ -46,6 +46,7 @@ int get_next_data(char *data, int size) {
  * if no more data is available.
  */
 void *get_next_packet(int sequence, int *len) {
+    fprintf(stderr,"sending # %d\n",sequence); 
     if ( !firstWindow ) {
         mylog( "[not first]\n" );
         void* cachedPacket = windowCache[ sequence % WINDOW_SIZE ];
@@ -97,15 +98,15 @@ int send_next_packet(int sock, struct sockaddr_in out) {
     return 1;
 }
 int send_next_window(int sock, struct sockaddr_in out, unsigned int* packetsSent) {
-    *packetsSent = 0;
-    for(int i = 0; i < WINDOW_SIZE; i++) {
+//    *packetsSent = 0;
+    for(int i = *packetsSent; i < WINDOW_SIZE; i++) {
         if ( !send_next_packet(sock,out) ) {
             break;
         }
         (*packetsSent)++;
         sequenceSend++;
     }
-    sequenceSend--;
+//    sequenceSend--;
 
     if ( firstWindow == 1 ) {
         firstWindow = 0;
@@ -175,7 +176,7 @@ int main(int argc, char *argv[]) {
     while (send_next_window(sock, out, &packetsSent) && consecutiveTimeouts < MAX_TIMEOUTS) {
         char timeout = 0;
         unsigned int done = 0;
-        while ( !timeout && done < packetsSent ) {
+     //   while ( !timeout && done < packetsSent ) {
             t.tv_usec = SEND_TIMEOUT;
             FD_ZERO(&socks);
             FD_SET(sock, &socks);
@@ -183,6 +184,7 @@ int main(int argc, char *argv[]) {
             // wait to receive, or for a timeout
             if (select(sock + 1, &socks, NULL, NULL, &t)) {
                 consecutiveTimeouts = 0;
+                packetsSent = 0; 
 
                 unsigned char buf[10000];
                 int buf_len = sizeof(buf);
@@ -194,23 +196,32 @@ int main(int argc, char *argv[]) {
 
                 header *myheader = get_header(buf);
 
-                if ((myheader->magic == MAGIC) && ( myheader->sequence <= sequenceSend ) && (myheader->ack == 1)) {
+                if ((myheader->magic == MAGIC) && (myheader->ack == 1)) {
+                    if (myheader->sequence == sequenceSend) {
                     mylog("[recv ack] %d\n", myheader->sequence);
                     sequenceReceive = myheader->sequence;
-                    done++;
+                    done+=sequenceReceive - sequenceSend;
+                    //sequenceSend = done;  
+                    }
+                    else {
+                     fprintf(stderr,"Packet loss, got sequence # %d \n",myheader->sequence);
+                     sequenceSend = myheader->sequence; 
+                    }
                 } else {
+                    if (myheader) {
+                        sequenceSend = myheader->sequence; 
+                    }
                     mylog("[recv corrupted ack] %x %d > %d - %d - %d\n", MAGIC, myheader->sequence, sequenceSend, myheader->ack, myheader->eof);
                 }
             } else {
                 mylog("[error] timeout occurred\n");
                 timeout = 1;
                 consecutiveTimeouts++;
-                sequenceSend = sequenceReceive + 1;
                 break;
-            }
+       //     }
 
         }
-        sequenceSend = sequenceReceive + 1;
+//        sequenceSend = sequenceReceive + 1;
 
     }
     if ( consecutiveTimeouts == MAX_TIMEOUTS ) {
