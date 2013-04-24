@@ -91,19 +91,20 @@ int main() {
             }
             //      dump_packet(buf, received);
             t.tv_sec = RECV_TIMEOUT;
-            int headerSequence = read_header_sequence( buf );
-            int headerMagic = read_header_magic( buf );
+            unsigned int headerSequence = read_header_sequence( buf );
+            unsigned int headerMagic = read_header_magic( buf );
             int headerLength = read_header_length( buf );
             int headerEof = read_header_eof( buf );
             char *data = get_data(buf);
             if (headerMagic == MAGIC ) {
-//               if ( get_checksum(data,headerLength ) == checksum(data, headerLength ) ) {
-
                     if ( windowCache[ headerSequence % WINDOW_SIZE ] ) {
                         free( windowCache [ headerSequence % WINDOW_SIZE ] );
+                        windowCache[ headerSequence % WINDOW_SIZE ] = 0 ;
                     }
-                    windowCache[ headerSequence % WINDOW_SIZE ] = (void*)malloc( sizeof( header ) + read_header_length( buf ) );
-                    memcpy( windowCache[ headerSequence % WINDOW_SIZE ], buf, sizeof( header ) + read_header_length( buf ) );
+                    if ( get_checksum(data,headerLength ) == checksum(data, headerLength ) ){ 
+                        windowCache[ headerSequence % WINDOW_SIZE ] = (void*)malloc( sizeof( header ) + read_header_length( buf ) );
+                        memcpy( windowCache[ headerSequence % WINDOW_SIZE ], buf, sizeof( header ) + read_header_length( buf ) );
+                    } 
                     int ackLength = 0;
 
                     if ( headerSequence == nextSequence ) {
