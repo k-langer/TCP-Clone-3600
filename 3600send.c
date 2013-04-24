@@ -57,8 +57,7 @@ void *get_next_packet(int sequence, int *len) {
             return cachedPacket;
         }
     }
-   
-    debug_time += 100000;
+    debug_time += SHORT_TIMEOUT; 
     char *data = malloc(DATA_SIZE);
     int data_len = get_next_data(data, DATA_SIZE);
     if (data_len == 0) {
@@ -104,7 +103,7 @@ int send_next_packet(int sock, struct sockaddr_in out) {
 }
 int send_next_window(int sock, struct sockaddr_in out, unsigned int* packetsSent) {
     *packetsSent = 0;
-    for(int i = 0; i < WINDOW_SIZE/10; i++) {
+    for(int i = 0; i < WINDOW_SIZE/2; i++) {
         if ( !send_next_packet(sock,out) ) {
             break;
         }
@@ -127,12 +126,12 @@ void send_final_packet(int sock, struct sockaddr_in out) {
 }
 
 int fast_retransmit(int sock, struct sockaddr_in out, fd_set socks, struct timeval t, struct sockaddr_in in, socklen_t in_len ) {
-    for ( int x = 0; x < 50; x++ ) {
+    for ( int x = 0; x < RETRANSMIT_WINDOW; x++ ) {
         send_next_packet( sock, out );
 
         if ( select( sock + 1, &socks, NULL, NULL, &t) ) {
 
-            unsigned char buf[10000];
+            unsigned char buf[DATA_SIZE+sizeof(header)];
             int buf_len = sizeof(buf);
             int received;
             if ((received = recvfrom(sock, &buf, buf_len, 0, (struct sockaddr *) &in, (socklen_t *) &in_len)) < 0) {
@@ -221,7 +220,7 @@ int main(int argc, char *argv[]) {
             // wait to receive, or for a timeout
             if (select(sock + 1, &socks, NULL, NULL, &t)) {
                 consecutiveTimeouts = 0;
-                unsigned char buf[10000];
+                unsigned char buf[DATA_SIZE+sizeof(header)];
                 int buf_len = sizeof(buf);
                 int received;
                 if ((received = recvfrom(sock, &buf, buf_len, 0, (struct sockaddr *) &in, (socklen_t *) &in_len)) < 0) {
@@ -234,11 +233,13 @@ int main(int argc, char *argv[]) {
                 if ((myheader->magic == MAGIC) && ( myheader->sequence <= sequenceSend ) && (myheader->ack == 1)) {
                     mylog("[recv ack] %d\n", myheader->sequence);
                     if ( sequenceReceive == myheader->sequence ) {
-                        repeatAcks++;
+                       repeatAcks++;
                     } else {
                         repeatAcks = 0;
                     }
-                    if ( repeatAcks == RETRANSMIT ) {
+                    if ( repeatAcks == RETRANSMIT) {
+                        debug_time = SEND_TIMEOUT; 
+                        repeatAcks = 0;
                         sequenceSend = sequenceReceive + 1;
                         if ( !fast_retransmit( sock, out, socks, t, in, in_len ) ) {
                             break;
@@ -269,9 +270,10 @@ int main(int argc, char *argv[]) {
         while ( ( consecutiveTimeouts < (MAX_TIMEOUTS / 4) ) ) {
             send_final_packet(sock, out);
             t.tv_sec = 0;
-            t.tv_usec = 100000;
+            t.tv_usec = SHORT_TIMEOUT;
+            t.tv_sec = debug_time; 
             if (select(sock + 1, &socks, NULL, NULL, &t)) {
-                unsigned char buf[10000];
+                unsigned char buf[DATA_SIZE+sizeof(header)];
                 int buf_len = sizeof(buf);
                 int received;
                 if ((received = recvfrom(sock, &buf, buf_len, 0, (struct sockaddr *) &in, (socklen_t *) &in_len)) < 0) {    

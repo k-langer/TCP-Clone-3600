@@ -181,7 +181,7 @@ checksum_t checksum(char* data, int len)
     if ( i == 1) {
         chksm+=*data;
     } 
-    return chksm; 
+    return ~chksm; 
 }
 bool_t check_checksum(char* data, int len) 
 {
