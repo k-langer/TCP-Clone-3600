@@ -28,6 +28,7 @@ unsigned int sequenceSend = 0;
 unsigned int sequenceReceive = -1;
 void* windowCache [ WINDOW_SIZE ];
 unsigned char firstWindow = 1;
+unsigned int debug_time = SEND_TIMEOUT; 
 
 void usage() {
     printf("Usage: 3600send host:port\n");
@@ -49,13 +50,15 @@ void *get_next_packet(int sequence, int *len) {
     if ( windowCache[ sequence % WINDOW_SIZE ] ) {
         void* cachedPacket = windowCache[ sequence % WINDOW_SIZE ];
         int cachedHeaderSequence = read_header_sequence( cachedPacket );
-        if ( cachedHeaderSequence == sequence ) {
+        if (cachedHeaderSequence == sequence ) { 
+            debug_time = SEND_TIMEOUT; 
             mylog( "[from cache] %i\n", cachedHeaderSequence );
             *len = sizeof( header ) + read_header_length( cachedPacket );
             return cachedPacket;
         }
     }
-
+   
+    debug_time += 100000;
     char *data = malloc(DATA_SIZE);
     int data_len = get_next_data(data, DATA_SIZE);
     if (data_len == 0) {
@@ -101,7 +104,7 @@ int send_next_packet(int sock, struct sockaddr_in out) {
 }
 int send_next_window(int sock, struct sockaddr_in out, unsigned int* packetsSent) {
     *packetsSent = 0;
-    for(int i = 0; i < WINDOW_SIZE; i++) {
+    for(int i = 0; i < WINDOW_SIZE/10; i++) {
         if ( !send_next_packet(sock,out) ) {
             break;
         }
@@ -206,20 +209,18 @@ int main(int argc, char *argv[]) {
     unsigned int packetsSent = 0;
     unsigned int consecutiveTimeouts = 0;
     unsigned int repeatAcks = 0;
-
     while (send_next_window(sock, out, &packetsSent) && consecutiveTimeouts < MAX_TIMEOUTS) {
         char timeout = 0;
         unsigned int done = 0;
         while ( !timeout && done < packetsSent ) {
             t.tv_sec = DEBUG_SEND_TIMEOUT;
-            t.tv_usec = SEND_TIMEOUT;
+            t.tv_usec = debug_time; 
             FD_ZERO(&socks);
             FD_SET(sock, &socks);
 
             // wait to receive, or for a timeout
             if (select(sock + 1, &socks, NULL, NULL, &t)) {
                 consecutiveTimeouts = 0;
-
                 unsigned char buf[10000];
                 int buf_len = sizeof(buf);
                 int received;

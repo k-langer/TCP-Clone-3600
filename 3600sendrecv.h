@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define WINDOW_SIZE 75
+#define WINDOW_SIZE 1400
 #define SEND_TIMEOUT 80000 //microseconds
 #define DEBUG_SEND_TIMEOUT 0 //seconds
 #define RECV_TIMEOUT 15     //seconds
