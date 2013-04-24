@@ -27,7 +27,9 @@ static int DATA_SIZE = 1460;
 unsigned int sequenceSend = 0;
 unsigned int sequenceReceive = -1;
 void* windowCache [ WINDOW_SIZE ];
-unsigned char firstWindow = 1;
+int windowSize = 1;
+int windowThreshold = WINDOW_SIZE;
+int currentTimeout = SEND_TIMEOUT;
 
 void usage() {
     printf("Usage: 3600send host:port\n");
@@ -100,8 +102,12 @@ int send_next_packet(int sock, struct sockaddr_in out) {
     return 1;
 }
 int send_next_window(int sock, struct sockaddr_in out, unsigned int* packetsSent) {
+    mylog( "[window size] %d\n", windowSize );
     *packetsSent = 0;
-    for(int i = 0; i < WINDOW_SIZE; i++) {
+    if ( windowSize > WINDOW_SIZE ) {
+        windowSize = WINDOW_SIZE;
+    }
+    for(int i = 0; i < windowSize; i++) {
         if ( !send_next_packet(sock,out) ) {
             break;
         }
@@ -126,7 +132,11 @@ void send_final_packet(int sock, struct sockaddr_in out) {
 int fast_retransmit(int sock, struct sockaddr_in out, fd_set socks, struct timeval t, struct sockaddr_in in, socklen_t in_len ) {
     for ( int x = 0; x < 50; x++ ) {
         send_next_packet( sock, out );
+        mylog( "[fast retransmit] %d\n", sequenceSend );
+        FD_ZERO(&socks);
+        FD_SET(sock, &socks);
 
+        t.tv_usec = 80000;
         if ( select( sock + 1, &socks, NULL, NULL, &t) ) {
 
             unsigned char buf[10000];
@@ -143,7 +153,7 @@ int fast_retransmit(int sock, struct sockaddr_in out, fd_set socks, struct timev
                 mylog("[recv ack] %d\n", myheader->sequence);
                 sequenceReceive = myheader->sequence;
             } else {
-                mylog("[recv corrupted ack] %x %d > %d - %d - %d\n", MAGIC, myheader->sequence, sequenceSend, myheader->ack, myheader->eof );
+                mylog("[recv corrupted ack] %x %d > %d - %d - %d\n", MAGIC, myheader->sequence, sequenceSend, myheader->ack, myheader->magic );
             }
         } else {
             mylog("[error] timeout occurred\n");
@@ -206,16 +216,18 @@ int main(int argc, char *argv[]) {
     unsigned int packetsSent = 0;
     unsigned int consecutiveTimeouts = 0;
     unsigned int repeatAcks = 0;
+    char slowStart = 1;
+    unsigned int congestionAvoidance = 0;
 
     while (send_next_window(sock, out, &packetsSent) && consecutiveTimeouts < MAX_TIMEOUTS) {
         char timeout = 0;
         unsigned int done = 0;
-        while ( !timeout && done < packetsSent ) {
+        while ( !timeout && !done ) {
+
             t.tv_sec = DEBUG_SEND_TIMEOUT;
-            t.tv_usec = SEND_TIMEOUT;
+            t.tv_usec = currentTimeout;
             FD_ZERO(&socks);
             FD_SET(sock, &socks);
-
             // wait to receive, or for a timeout
             if (select(sock + 1, &socks, NULL, NULL, &t)) {
                 consecutiveTimeouts = 0;
@@ -230,7 +242,7 @@ int main(int argc, char *argv[]) {
 
                 header *myheader = get_header(buf);
 
-                if ((myheader->magic == MAGIC) && ( myheader->sequence <= sequenceSend ) && (myheader->ack == 1)) {
+                if ((myheader->magic == MAGIC) && (myheader->ack == 1)) {
                     mylog("[recv ack] %d\n", myheader->sequence);
                     if ( sequenceReceive == myheader->sequence ) {
                         repeatAcks++;
@@ -240,18 +252,45 @@ int main(int argc, char *argv[]) {
                     if ( repeatAcks == RETRANSMIT ) {
                         sequenceSend = sequenceReceive + 1;
                         if ( !fast_retransmit( sock, out, socks, t, in, in_len ) ) {
+                            mylog("[fast retransmit failed!]\n");
                             break;
+                        } else {
+                            mylog( "[fast retransmit successful]\n" );
+                            windowThreshold = windowSize / 2;
+                            windowSize = windowSize / 2;
+                            slowStart = 0;
+                            currentTimeout /= 2;
+                            congestionAvoidance = windowSize;
                         }
                     } else {
                         sequenceReceive = myheader->sequence;
+                        if ( slowStart ) {
+                            currentTimeout *= 2;
+                            if ( currentTimeout > LONG_TIMEOUT ) {
+                                currentTimeout = LONG_TIMEOUT;
+                            }
+                            windowSize++;
+                        } else {
+                            if ( !congestionAvoidance ) {
+                                windowSize++;
+                                congestionAvoidance = windowSize;
+                            } else {
+                                congestionAvoidance--;
+                            }
+                        }
                     }
                     done++;
                 } else {
-                    mylog("[recv corrupted ack] %x %d > %d - %d - %d\n", MAGIC, myheader->sequence, sequenceSend, myheader->ack, myheader->eof);
+                    mylog("[recv corrupted ack] %x %d > %d - %d - %d\n", MAGIC, myheader->sequence, sequenceSend, myheader->ack, myheader->magic);
                 }
             } else {
                 mylog("[error] timeout occurred\n");
                 timeout = 1;
+                slowStart = 1;
+                if ( windowSize > 1 ) {
+                    windowThreshold = windowSize / 2;
+                }
+                windowSize = 1;
                 consecutiveTimeouts++;
                 sequenceSend = sequenceReceive + 1;
                 break;

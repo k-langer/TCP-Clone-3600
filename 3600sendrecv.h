@@ -11,12 +11,14 @@
 #include <stdio.h>
 #include <stdarg.h>
 
-#define WINDOW_SIZE 15
-#define SEND_TIMEOUT 80000 //microseconds
-#define DEBUG_SEND_TIMEOUT 0 //seconds
-#define RECV_TIMEOUT 15     //seconds
+#define WINDOW_SIZE 200
+#define SEND_TIMEOUT 200000     //microseconds
+#define LONG_TIMEOUT 1000000    //microseconds
+#define SHORT_TIMEOUT 60000     //microseconds
+#define DEBUG_SEND_TIMEOUT 0    //seconds
+#define RECV_TIMEOUT 15         //seconds
 #define MAX_TIMEOUTS 100
-#define RETRANSMIT 5
+#define RETRANSMIT 10
 
 typedef int checksum_t;
 typedef char bool_t;
