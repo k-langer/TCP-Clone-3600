@@ -199,7 +199,7 @@ int main(int argc, char *argv[]) {
     t.tv_sec = DEBUG_SEND_TIMEOUT;
     t.tv_usec = SEND_TIMEOUT;
 
-    for ( int x = 0; x++; x < WINDOW_SIZE ) {
+    for ( int x = 0; x < WINDOW_SIZE; x++ ) {
         windowCache[ x ] = NULL;
     }
 
