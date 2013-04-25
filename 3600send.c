@@ -103,7 +103,7 @@ int send_next_packet(int sock, struct sockaddr_in out) {
 }
 int send_next_window(int sock, struct sockaddr_in out, unsigned int* packetsSent) {
     *packetsSent = 0;
-    for(int i = 0; i < WINDOW_SIZE/2; i++) {
+    for(int i = 0; i < WINDOW_SIZE; i++) {
         if ( !send_next_packet(sock,out) ) {
             break;
         }
@@ -128,9 +128,7 @@ void send_final_packet(int sock, struct sockaddr_in out) {
 int fast_retransmit(int sock, struct sockaddr_in out, fd_set socks, struct timeval t, struct sockaddr_in in, socklen_t in_len ) {
     for ( int x = 0; x < RETRANSMIT_WINDOW; x++ ) {
         send_next_packet( sock, out );
-
         if ( select( sock + 1, &socks, NULL, NULL, &t) ) {
-
             unsigned char buf[DATA_SIZE+sizeof(header)];
             int buf_len = sizeof(buf);
             int received;
@@ -138,9 +136,7 @@ int fast_retransmit(int sock, struct sockaddr_in out, fd_set socks, struct timev
                 perror("recvfrom");
                 exit(1);
             }
-
             header *myheader = get_header(buf);
-
             if ((myheader->magic == MAGIC) && (myheader->ack == 1)) {
                 mylog("[recv ack] %d\n", myheader->sequence);
                 sequenceReceive = myheader->sequence;
@@ -238,8 +234,8 @@ int main(int argc, char *argv[]) {
                         repeatAcks = 0;
                     }
                     if ( repeatAcks == RETRANSMIT) {
-                        debug_time = SEND_TIMEOUT; 
                         repeatAcks = 0;
+                        debug_time = DEBUG_SEND_TIMEOUT; 
                         sequenceSend = sequenceReceive + 1;
                         if ( !fast_retransmit( sock, out, socks, t, in, in_len ) ) {
                             break;

@@ -102,6 +102,7 @@ int main() {
                         windowCache[ headerSequence % WINDOW_SIZE ] = 0 ;
                     }
                     if ( get_checksum(data,headerLength ) == checksum(data, headerLength ) ){ 
+                        mylog("Checksum: %d\n",get_checksum(data,headerLength));
                         windowCache[ headerSequence % WINDOW_SIZE ] = (void*)malloc( sizeof( header ) + read_header_length( buf ) );
                         memcpy( windowCache[ headerSequence % WINDOW_SIZE ], buf, sizeof( header ) + read_header_length( buf ) );
                     } 
