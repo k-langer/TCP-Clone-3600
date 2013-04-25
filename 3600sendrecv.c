@@ -173,6 +173,7 @@ void dump_packet(unsigned char *data, int size) {
 }
 checksum_t checksum(char* data, int len)
 {
+    //Implemention inspired by Prof. Mislove's slides
     checksum_t chksm = 0; 
     int i; 
     for (i = len; i > 1; i -=2) {
@@ -182,8 +183,4 @@ checksum_t checksum(char* data, int len)
         chksm+=*data;
     } 
     return ~chksm; 
-}
-bool_t check_checksum(char* data, int len) 
-{
-    return (bool_t)(check_checksum(data,len) == checksum(data,len)); 
 }
