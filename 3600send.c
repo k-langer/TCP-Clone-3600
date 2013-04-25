@@ -23,9 +23,11 @@
 #include "3600sendrecv.h"
 
 static int DATA_SIZE = 1460;
-
+//Used to keep track of what is being sent
 unsigned int sequenceSend = 0;
+//Used to keep track of what has been recived thus far
 unsigned int sequenceReceive = -1;
+//Used for buffering the input
 void* windowCache [ WINDOW_SIZE ];
 unsigned char firstWindow = 1;
 unsigned int debug_time = SEND_TIMEOUT; 
@@ -47,16 +49,19 @@ int get_next_data(char *data, int size) {
  * if no more data is available.
  */
 void *get_next_packet(int sequence, int *len) {
+    //Because packets may need retransmission, store sent packets in a buffer
     if ( windowCache[ sequence % WINDOW_SIZE ] ) {
         void* cachedPacket = windowCache[ sequence % WINDOW_SIZE ];
         int cachedHeaderSequence = read_header_sequence( cachedPacket );
         if (cachedHeaderSequence == sequence ) { 
+            //If packets are sent from the buffer, packet loss or a timeout occured
             debug_time = SEND_TIMEOUT; 
             mylog( "[from cache] %i\n", cachedHeaderSequence );
             *len = sizeof( header ) + read_header_length( cachedPacket );
             return cachedPacket;
         }
     }
+    //If there is no packet loss, increase the timeout 
     debug_time += SHORT_TIMEOUT; 
     char *data = malloc(DATA_SIZE);
     int data_len = get_next_data(data, DATA_SIZE);
@@ -64,19 +69,20 @@ void *get_next_packet(int sequence, int *len) {
         free(data);
         return NULL;
     }
-
+    
     header *myheader = make_header(sequence, data_len, 0, 0);
     void *packet = malloc(sizeof(header) + data_len+sizeof(checksum_t));
     memcpy(packet, myheader, sizeof(header));
     memcpy(((char *) packet) +sizeof(header), data, data_len);
+    //Calculate and attach checksum to the transmitted data    
     checksum_t chksm = checksum(data,data_len); 
     memcpy(((char *) packet) +sizeof(header)+data_len, &chksm, sizeof(checksum_t)); 
     free(data);
     free(myheader);
-
+    //len  is the amount of bytes transmitted for this packet
     *len = sizeof(header) + data_len + sizeof(checksum_t);
     mylog("Checksum %d\n",get_checksum(packet,data_len+sizeof(header)));
-
+    
     if ( windowCache[ sequence % WINDOW_SIZE ] ) {
         free( windowCache [ sequence % WINDOW_SIZE ] );
     }
@@ -102,6 +108,7 @@ int send_next_packet(int sock, struct sockaddr_in out) {
     return 1;
 }
 int send_next_window(int sock, struct sockaddr_in out, unsigned int* packetsSent) {
+    //controlls the amount of un-ack'ed packets in the network    
     *packetsSent = 0;
     for(int i = 0; i < WINDOW_SIZE; i++) {
         if ( !send_next_packet(sock,out) ) {
@@ -124,8 +131,10 @@ void send_final_packet(int sock, struct sockaddr_in out) {
         exit(1);
     }
 }
-
-int fast_retransmit(int sock, struct sockaddr_in out, fd_set socks, struct timeval t, struct sockaddr_in in, socklen_t in_len ) {
+/*The protocol normally waits for all the packets in a window to be transmitted and a timeout to occur 
+    before adressing packet loss in the network. This function is triggered when there are RETRANSMIT number
+    of duplicate ACKs indicating that the packets are not just reciving out of order or duplicated by acutally lost */
+int fast_retransmit(int sock, struct sockaddr_in out, fd_set socks, struct timeval t, struct sockaddr_in in, socklen_t in_len ) {    
     for ( int x = 0; x < RETRANSMIT_WINDOW; x++ ) {
         send_next_packet( sock, out );
         if ( select( sock + 1, &socks, NULL, NULL, &t) ) {
@@ -208,6 +217,7 @@ int main(int argc, char *argv[]) {
         char timeout = 0;
         unsigned int done = 0;
         while ( !timeout && done < packetsSent ) {
+            //User controlled timeout to the second, automaticlaly clocked ot the uS            
             t.tv_sec = DEBUG_SEND_TIMEOUT;
             t.tv_usec = debug_time; 
             FD_ZERO(&socks);
@@ -228,6 +238,7 @@ int main(int argc, char *argv[]) {
 
                 if ((myheader->magic == MAGIC) && ( myheader->sequence <= sequenceSend ) && (myheader->ack == 1)) {
                     mylog("[recv ack] %d\n", myheader->sequence);
+                    //If there are too many repeat acks, call fast retrainsmit and reduce the timeout value                    
                     if ( sequenceReceive == myheader->sequence ) {
                        repeatAcks++;
                     } else {

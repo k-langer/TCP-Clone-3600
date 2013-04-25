@@ -19,9 +19,11 @@
 #define MAX_TIMEOUTS 100
 #define RETRANSMIT 4
 #define RETRANSMIT_WINDOW 20
-typedef int checksum_t;
+//Typedef checksum to allow for size and resolution changes
+typedef char checksum_t;
 typedef char bool_t;
 
+//Header attached to each sent packet
 typedef struct header_t {
   unsigned int magic:14;
   unsigned int ack:1;
@@ -40,10 +42,15 @@ int read_header_length(void* data);
 int read_header_eof(void* data);
 int read_header_magic(void* data);
 char *get_data(void *data);
+/* 
+    checksum byte sums the data using 1s complement
+    used to check data integrety. pass pointer to data
+    and length of data
+*/
 checksum_t get_checksum(void *data,int dataLen);
 char *timestamp();
 void mylog(char *fmt, ...);
 checksum_t checksum(char* data,int len);
-bool_t check_checksum(char* data, int len);
+
 #endif
 

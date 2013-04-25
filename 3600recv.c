@@ -96,11 +96,14 @@ int main() {
             int headerLength = read_header_length( buf );
             int headerEof = read_header_eof( buf );
             char *data = get_data(buf);
+            //basic check to see if the packet is valid
             if (headerMagic == MAGIC ) {
+                    //Clear old entries before losing the pointer
                     if ( windowCache[ headerSequence % WINDOW_SIZE ] ) {
                         free( windowCache [ headerSequence % WINDOW_SIZE ] );
                         windowCache[ headerSequence % WINDOW_SIZE ] = 0 ;
                     }
+                    //Calculate the checksums to check the data for errors, compare to attached checksum, only store in recv buff if it passes this check
                     if ( get_checksum(data,headerLength ) == checksum(data, headerLength ) ){ 
                         mylog("Checksum: %d\n",get_checksum(data,headerLength));
                         windowCache[ headerSequence % WINDOW_SIZE ] = (void*)malloc( sizeof( header ) + read_header_length( buf ) );
@@ -108,12 +111,14 @@ int main() {
                     } 
                     int ackLength = 0;
 
+                    //If the seuqnece matches the next sequence that is needed, progress the sequence number
                     if ( headerSequence == nextSequence ) {
                         write(1, data, headerLength);
                         nextSequence++;
                         void* nextPacket = NULL;
                         nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
                         while ( nextPacket && read_header_sequence( nextPacket ) == (signed int)nextSequence ) {
+                            //Fill in additional packets that were previously stored in the recv and increment seq
                             write( 1, get_data( nextPacket ), read_header_length( nextPacket ) );
                             nextSequence++;
                             nextPacket = windowCache[ nextSequence % WINDOW_SIZE ];
