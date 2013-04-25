@@ -1,4 +1,29 @@
 Authors: Kevin Langer, Javier Muhrer
 CS3600 Reliable Transport Project.
+Developed on
+ISA: x86-i686
+Linux: 2.6.28-19-server
+gcc: 4.3.3 (Ubuntu 4.3.3-5ubuntu4)
+Using Compiler flags: gcc -std=c99 -O0 -g -lm -Wall -pedantic -Werror -Wextra
 
-We implemented a basic sliding window protocol with a configurable send timeout, receive timeout, and window size. With just these implemented, we were able to achieve good speed, but excessive unnecessary data was transmitted. We attempted adjustable timeouts and slow start/congestion avoidance/fast retransmit, but we were not able to tune these features to enhance performance. Some tests improved but others suffered and even failed. A packet cache the size of the window was implemented on both the send and receive side. The sender caches every packet it sends in case it needs to retransmit. We never re-read data from the file. The receiver caches in case it receives packets out of order. When it receives an earlier packet, it can "ack forward" to avoid unnecessary retransmissions.
+Installing/Running
+Copy 3600recv.c, 3600send.c, and 3600sendrec.h and the included Makefile into a local directory. 
+make; 
+Run 3600recv
+Run 3600send 127.0.0.1:port and feed data into stdin 
+
+Is: 
+A server and sender of data packets. 
+A protocol that guarantees packet order. 
+A protocol that checks and insures data integrity.
+A protocol that times out on irresolvable packet loss.
+A high-speed protocol. 
+Is a TCP clone on UDP.     
+Is not: 
+Compatible with any TCP headers. 
+A very efficient protocol. 
+
+Implementation: 
+We implemented a basic sliding window protocol with a configurable send timeout, receive timeout, and window size. With just these implemented, we were able to achieve good speed, but excessive unnecessary data was transmitted. We attempted adjustable timeouts and slow start/congestion avoidance/fast retransmit, but we were not able to tune these features to enhance performance. Some tests improved but others suffered and even failed. A packet cache the size of the window was implemented on both the send and receive side. The sender caches every packet it sends in case it needs to retransmit. We never re-read data from the file. The receiver caches in case it receives packets out of order. When it receives an earlier packet, it can "ack forward" to avoid unnecessary retransmissions. Likewise, duplicate packets that are already ack’ed  are discarded. 
+Testing and Debugging: 
+This program was difficult to debug because the netsim settings are stochastic by design and necessity. Using the mylog command to print to stderr and gdb the basic protocol ensuring ordering was developed. Using the ./r  un command and netsim data integrity was ensured on the most horrible of network settings. Optimizing for performance was more difficult. Without even recompiling the program, the performance numbers could still be very different each run. This made it difficult to assess what settings and features are design wins. As a result, we relied on theory that we learned in class implement what should be correct. 
